@@ -9,7 +9,7 @@ export default defineConfig({
   build: {
     lib: {
       entry: resolve(__dirname, "src/main.ts"),
-      name: "Iframe Local Storage React Client",
+      name: "Single Sign On React Client",
       fileName: "main",
       formats: ["es"],
     },

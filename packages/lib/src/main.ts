@@ -1,2 +1,2 @@
-export * from "./IframeLocalStorage";
-export * from "./IframeLocalStorage.hooks";
+export * from "./SingleSignOn";
+export * from "./SingleSignOn.hooks";

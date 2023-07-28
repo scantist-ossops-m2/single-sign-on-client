@@ -1,6 +1,6 @@
 import { createContext } from "react";
 
-export const IframeLocalStorageContext = createContext<{
+export const SingleSignOnContext = createContext<{
   iframeRef: React.RefObject<HTMLIFrameElement>;
   iframeUrl: string;
   idRef: React.MutableRefObject<number>;

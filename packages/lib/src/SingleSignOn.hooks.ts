@@ -1,8 +1,8 @@
 import { useContext } from "react";
-import { IframeLocalStorageContext } from "./IframeLocalStorage.context";
+import { SingleSignOnContext } from "./SingleSignOn.context";
 
-export function useIframeLocalStorage() {
-  const { iframeRef, iframeUrl, idRef } = useContext(IframeLocalStorageContext);
+export function useSingleSignOn() {
+  const { iframeRef, iframeUrl, idRef } = useContext(SingleSignOnContext);
 
   // Get the window object of the iframe to which messages will be posted.
   const getIframeWindow = () => {

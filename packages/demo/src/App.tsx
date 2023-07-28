@@ -1,11 +1,11 @@
 import React, { useState } from "react";
-import { useIframeLocalStorage } from "@dcl/single-sign-on-react-client";
+import { useSingleSignOn } from "@dcl/single-sign-on-react-client";
 
 function App() {
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
 
-  const { set, get, remove, clear } = useIframeLocalStorage();
+  const { set, get, remove, clear } = useSingleSignOn();
 
   return (
     <>

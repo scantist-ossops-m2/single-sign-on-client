@@ -1,5 +1,5 @@
-import { SingleSignOn } from "@dcl/single-sign-on-client";
 import React, { useState } from "react";
+import { SingleSignOn } from "@dcl/single-sign-on-client";
 
 function App() {
   const [key, setKey] = useState("");

@@ -1,11 +1,9 @@
+import { SingleSignOn } from "@dcl/single-sign-on-client";
 import React, { useState } from "react";
-import { useSingleSignOn } from "@dcl/single-sign-on-react-client";
 
 function App() {
   const [key, setKey] = useState("");
   const [value, setValue] = useState("");
-
-  const { set, get, remove, clear } = useSingleSignOn();
 
   return (
     <>
@@ -18,7 +16,7 @@ function App() {
           <Input label="value" onChange={(e) => setValue(e.target.value)} />
         </div>
         <div style={{ marginTop: ".5rem", display: "flex", gap: ".5rem" }}>
-          <button
+          {/* <button
             onClick={async () => {
               try {
                 await set(key, value);
@@ -29,11 +27,11 @@ function App() {
             }}
           >
             SET
-          </button>
+          </button> */}
           <button
             onClick={async () => {
               try {
-                const val = await get(key);
+                const val = await SingleSignOn.getInstance().get(key);
                 console.log("get!", val);
               } catch (e) {
                 console.log((e as Error).message);
@@ -42,7 +40,7 @@ function App() {
           >
             GET
           </button>
-          <button
+          {/* <button
             onClick={async () => {
               try {
                 await remove(key);
@@ -65,7 +63,7 @@ function App() {
             }}
           >
             CLEAR
-          </button>
+          </button> */}
         </div>
       </main>
     </>

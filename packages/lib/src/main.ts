@@ -1,2 +1,2 @@
 export * from "./SingleSignOn";
-export * from "./SingleSignOn.hooks";
+export * from "./SingleSignOn.types";

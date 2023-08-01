@@ -1,5 +1,9 @@
 import { AuthIdentity } from "@dcl/crypto";
-import { SingleSignOnConfig } from "./SingleSignOn.types";
+
+export type SingleSignOnConfig = {
+  src: string;
+};
+
 
 export class SingleSignOn {
   private static instance?: SingleSignOn;

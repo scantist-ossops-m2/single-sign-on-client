@@ -25,6 +25,8 @@ jobs:
         uses: menduz/oddish-action@3.1.0
         with:
           cwd: ./packages/lib
+          deterministic-snapshot: true
+          registry-url: "https://registry.npmjs.org"
           access: public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

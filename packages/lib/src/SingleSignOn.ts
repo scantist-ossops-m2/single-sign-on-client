@@ -4,7 +4,6 @@ export type SingleSignOnConfig = {
   src: string;
 };
 
-
 export class SingleSignOn {
   private static instance?: SingleSignOn;
 
@@ -75,6 +74,97 @@ export class SingleSignOn {
         target: "single-sign-on",
         id,
         action: "get",
+        user,
+      },
+      this.config.src
+    );
+
+    return promise;
+  };
+
+  store = async (user: string, identity: AuthIdentity): Promise<void> => {
+    const { contentWindow } = this.iframe;
+
+    if (!contentWindow) {
+      throw new Error("Prop `contentWindow` is unavailable");
+    }
+
+    const id = ++this.counter;
+
+    const promise = new Promise<void>((resolve, reject) => {
+      const handler = (event: MessageEvent) => {
+        if (event.data?.target !== "single-sign-on") {
+          return;
+        }
+
+        if (event.data?.id !== id) {
+          return;
+        }
+
+        window.removeEventListener("message", handler);
+
+        if (event.data?.error) {
+          reject(new Error(event.data.error));
+          return;
+        }
+
+        resolve();
+      };
+
+      window.addEventListener("message", handler);
+    });
+
+    contentWindow.postMessage(
+      {
+        target: "single-sign-on",
+        id,
+        action: "store",
+        user,
+        identity,
+      },
+      this.config.src
+    );
+
+    return promise;
+  };
+
+  clear = async (user: string): Promise<void> => {
+    const { contentWindow } = this.iframe;
+
+    if (!contentWindow) {
+      throw new Error("Prop `contentWindow` is unavailable");
+    }
+
+    const id = ++this.counter;
+
+    const promise = new Promise<void>((resolve, reject) => {
+      const handler = (event: MessageEvent) => {
+        if (event.data?.target !== "single-sign-on") {
+          return;
+        }
+
+        if (event.data?.id !== id) {
+          return;
+        }
+
+        window.removeEventListener("message", handler);
+
+        if (event.data?.error) {
+          reject(new Error(event.data.error));
+          return;
+        }
+
+        resolve();
+      };
+
+      window.addEventListener("message", handler);
+    });
+
+    contentWindow.postMessage(
+      {
+        target: "single-sign-on",
+        id,
+        action: "clear",
         user,
       },
       this.config.src

@@ -11,9 +11,6 @@ on:
 jobs:
   build-release:
     runs-on: ubuntu-22.04
-    defaults:
-      run:
-        working-directory: ./packages/lib
     steps:
       - uses: actions/checkout@v3
       - name: Use Node.js 18.x
@@ -21,12 +18,13 @@ jobs:
         with:
           node-version: 18.x
       - name: Install
-        run: npm ci
+        run: npm ci -w packages/lib
       - name: Build
-        run: npm run build
+        run: npm run build -w packages/lib
       - name: Publish
         uses: menduz/oddish-action@3.1.0
         with:
+          cwd: packages/lib
           deterministic-snapshot: true
           registry-url: "https://registry.npmjs.org"
           access: public

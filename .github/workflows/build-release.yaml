@@ -20,8 +20,14 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 18.x
+      - name: Delete root package.json
+        # In order to publish the lib package, we need to delete the root package.json.
+        # Otherwise, oddish will pick that one up and try to publish it.
+        run: rm ../../package.json
       - name: Install
-        run: npm ci
+        # No need to ci as it is a package and packages don't use lock files.
+        # Also, given that we are using workspaces, we don't have the lockfile available.
+        run: npm i
       - name: Build
         run: npm run build
       - name: Publish

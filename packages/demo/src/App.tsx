@@ -1,9 +1,21 @@
 import React, { useState } from "react";
-import { SingleSignOn } from "@dcl/single-sign-on-client";
+import * as SingleSignOn from "@dcl/single-sign-on-client";
+import { AuthIdentity, AuthLinkType } from "@dcl/crypto";
+
+function getSampleAuthIdentity(): AuthIdentity {
+  return {
+    authChain: [{ payload: "payload", type: AuthLinkType.SIGNER, signature: "signature" }],
+    ephemeralIdentity: {
+      address: "address",
+      privateKey: "privateKey",
+      publicKey: "publicKey",
+    },
+    expiration: new Date(100),
+  };
+}
 
 function App() {
-  const [key, setKey] = useState("");
-  const [value, setValue] = useState("");
+  const [user, setUser] = useState("");
 
   return (
     <>
@@ -12,26 +24,29 @@ function App() {
       </header>
       <main>
         <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-          <Input label="key" onChange={(e) => setKey(e.target.value)} />
-          <Input label="value" onChange={(e) => setValue(e.target.value)} />
+          <Input label="key" onChange={(e) => setUser(e.target.value)} />
         </div>
         <div style={{ marginTop: ".5rem", display: "flex", gap: ".5rem" }}>
-          {/* <button
+          <button
             onClick={async () => {
+              const identity = getSampleAuthIdentity();
+
+              identity.ephemeralIdentity.address = user;
+
               try {
-                await set(key, value);
+                await SingleSignOn.storeIdentity(user, identity);
                 console.log("set!");
               } catch (e) {
                 console.log((e as Error).message);
               }
             }}
           >
-            SET
-          </button> */}
+            STORE
+          </button>
           <button
             onClick={async () => {
               try {
-                const val = await SingleSignOn.getInstance().get(key);
+                const val = await SingleSignOn.getIdentity(user);
                 console.log("get!", val);
               } catch (e) {
                 console.log((e as Error).message);
@@ -40,22 +55,10 @@ function App() {
           >
             GET
           </button>
-          {/* <button
-            onClick={async () => {
-              try {
-                await remove(key);
-                console.log("remove!");
-              } catch (e) {
-                console.log((e as Error).message);
-              }
-            }}
-          >
-            REMOVE
-          </button>
           <button
             onClick={async () => {
               try {
-                await clear();
+                await SingleSignOn.clearIdentity(user);
                 console.log("clear!");
               } catch (e) {
                 console.log((e as Error).message);
@@ -63,7 +66,7 @@ function App() {
             }}
           >
             CLEAR
-          </button> */}
+          </button>
         </div>
       </main>
     </>

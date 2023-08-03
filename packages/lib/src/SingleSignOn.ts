@@ -1,6 +1,6 @@
 import { AuthIdentity } from "@dcl/crypto";
 
-const IFRAME_ID = "single-sing-on";
+const IFRAME_ID = "single-sign-on";
 const IFRAME_TARGET = IFRAME_ID;
 
 let _counter = 0;

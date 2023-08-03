@@ -11,10 +11,13 @@ export function init(src: string) {
     throw new Error("SingleSignOn already initialized");
   }
 
+  _src = src;
+
   const iframe = document.createElement("iframe");
   iframe.id = IFRAME_ID;
-  iframe.src = _src = src;
-  iframe.width = iframe.height = "0";
+  iframe.src = src;
+  iframe.width = "0";
+  iframe.height = iframe.width;
 
   document.body.appendChild(iframe);
 }
@@ -88,76 +91,3 @@ function getIframe() {
 
   return cw;
 }
-
-// export class SingleSignOn {
-//   private static counter = 0;
-//   private static src: string = "";
-
-//   static init(src: string) {
-//     if (document.getElementById("single-sing-on")) {
-//       throw new Error("SingleSignOn already initialized");
-//     }
-
-//     const iframe = document.createElement("iframe");
-//     iframe.id = "single-sing-on";
-//     iframe.src = SingleSignOn.src = src;
-//     iframe.width = iframe.height = "0";
-
-//     document.body.appendChild(iframe);
-//   }
-
-//   static async get(user: string): Promise<AuthIdentity | null> {
-//     const iframe = SingleSignOn.getIframe();
-
-//     SingleSignOn.counter++;
-
-//     const id = SingleSignOn.counter;
-
-//     const promise = new Promise<AuthIdentity | null>((resolve, reject) => {
-//       const handler = (event: MessageEvent) => {
-//         if (event.data?.target !== "single-sign-on") {
-//           return;
-//         }
-
-//         if (event.data?.id !== id) {
-//           return;
-//         }
-
-//         window.removeEventListener("message", handler);
-
-//         if (event.data?.error) {
-//           reject(new Error(event.data.error));
-//           return;
-//         }
-
-//         resolve(JSON.parse(event.data.identity));
-//       };
-
-//       window.addEventListener("message", handler);
-//     });
-
-//     iframe.postMessage(
-//       {
-//         target: "single-sign-on",
-//         id,
-//         action: "get",
-//         user,
-//       },
-//       SingleSignOn.src
-//     );
-
-//     return promise;
-//   }
-
-//   private static getIframe() {
-//     const iframe = document.getElementById("single-sing-on") as HTMLIFrameElement | null;
-
-//     const cw = iframe?.contentWindow;
-
-//     if (!cw) {
-//       throw new Error("Iframe is not available");
-//     }
-
-//     return cw;
-//   }
-// }

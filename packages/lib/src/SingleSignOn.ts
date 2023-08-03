@@ -23,25 +23,13 @@ export function init(src: string) {
 }
 
 export function getIdentity(user: string) {
-  return handleIdentity<AuthIdentity | null>("get", user);
-}
-
-export function storeIdentity(user: string, identity: AuthIdentity) {
-  return handleIdentity<void>("store", user, identity);
-}
-
-export function clearIdentity(user: string) {
-  return handleIdentity<void>("clear", user);
-}
-
-function handleIdentity<T>(action: "get" | "store" | "clear", user: string, identity?: AuthIdentity): Promise<T> {
   const iframe = getIframe();
 
   _counter++;
 
   const id = _counter;
 
-  const promise = new Promise<T>((resolve, reject) => {
+  const promise = new Promise<AuthIdentity | null>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
       if (event.data?.target !== IFRAME_TARGET || event.data?.id !== id) {
         return;
@@ -54,13 +42,13 @@ function handleIdentity<T>(action: "get" | "store" | "clear", user: string, iden
         return;
       }
 
-      if (action === "get") {
-        resolve(JSON.parse(event.data.identity));
-      } else {
-        resolve({} as T);
+      const identity = JSON.parse(event.data.identity) as AuthIdentity | null;
+
+      if (identity) {
+        identity.expiration = new Date(identity.expiration);
       }
 
-      resolve(action === "get" ? JSON.parse(event.data.identity) : undefined);
+      resolve(identity);
     };
 
     window.addEventListener("message", handler);
@@ -70,9 +58,87 @@ function handleIdentity<T>(action: "get" | "store" | "clear", user: string, iden
     {
       target: IFRAME_TARGET,
       id,
-      action,
+      action: "get",
+      user,
+    },
+    _src
+  );
+
+  return promise;
+}
+
+export function storeIdentity(user: string, identity: AuthIdentity) {
+  const iframe = getIframe();
+
+  _counter++;
+
+  const id = _counter;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.target !== IFRAME_TARGET || event.data?.id !== id) {
+        return;
+      }
+
+      window.removeEventListener("message", handler);
+
+      if (event.data?.error) {
+        reject(new Error(event.data.error));
+        return;
+      }
+
+      resolve();
+    };
+
+    window.addEventListener("message", handler);
+  });
+
+  iframe.postMessage(
+    {
+      target: IFRAME_TARGET,
+      id,
+      action: "store",
       user,
       identity,
+    },
+    _src
+  );
+
+  return promise;
+}
+
+export function clearIdentity(user: string) {
+  const iframe = getIframe();
+
+  _counter++;
+
+  const id = _counter;
+
+  const promise = new Promise<void>((resolve, reject) => {
+    const handler = (event: MessageEvent) => {
+      if (event.data?.target !== IFRAME_TARGET || event.data?.id !== id) {
+        return;
+      }
+
+      window.removeEventListener("message", handler);
+
+      if (event.data?.error) {
+        reject(new Error(event.data.error));
+        return;
+      }
+
+      resolve();
+    };
+
+    window.addEventListener("message", handler);
+  });
+
+  iframe.postMessage(
+    {
+      target: IFRAME_TARGET,
+      id,
+      action: "clear",
+      user,
     },
     _src
   );

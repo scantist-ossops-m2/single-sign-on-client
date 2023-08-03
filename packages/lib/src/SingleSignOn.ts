@@ -22,59 +22,26 @@ export function init(src: string) {
   document.body.appendChild(iframe);
 }
 
-export function getIdentity(user: string) {
-  const iframe = getIframe();
-
-  _counter++;
-
-  const id = _counter;
-
-  const promise = new Promise<AuthIdentity | null>((resolve, reject) => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.target !== IFRAME_TARGET || event.data?.id !== id) {
-        return;
-      }
-
-      window.removeEventListener("message", handler);
-
-      if (event.data?.error) {
-        reject(new Error(event.data.error));
-        return;
-      }
-
-      const identity = JSON.parse(event.data.identity) as AuthIdentity | null;
-
-      if (identity) {
-        identity.expiration = new Date(identity.expiration);
-      }
-
-      resolve(identity);
-    };
-
-    window.addEventListener("message", handler);
-  });
-
-  iframe.postMessage(
-    {
-      target: IFRAME_TARGET,
-      id,
-      action: "get",
-      user,
-    },
-    _src
-  );
-
-  return promise;
+export function getIdentity(user: string): Promise<AuthIdentity | null> {
+  return performAction("get", user);
 }
 
-export function storeIdentity(user: string, identity: AuthIdentity) {
+export function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
+  return performAction("store", user, identity);
+}
+
+export function clearIdentity(user: string): Promise<void> {
+  return performAction("clear", user);
+}
+
+function performAction(action: string, user: string, identity?: AuthIdentity) {
   const iframe = getIframe();
 
   _counter++;
 
   const id = _counter;
 
-  const promise = new Promise<void>((resolve, reject) => {
+  const promise = new Promise<any>((resolve, reject) => {
     const handler = (event: MessageEvent) => {
       if (event.data?.target !== IFRAME_TARGET || event.data?.id !== id) {
         return;
@@ -87,7 +54,17 @@ export function storeIdentity(user: string, identity: AuthIdentity) {
         return;
       }
 
-      resolve();
+      const msgIdentity = event.data?.identity;
+
+      if (msgIdentity) {
+        const msgIdentityParsed = JSON.parse(msgIdentity) as AuthIdentity;
+
+        msgIdentityParsed.expiration = new Date(msgIdentityParsed.expiration);
+
+        resolve(msgIdentityParsed);
+      } else {
+        resolve(null);
+      }
     };
 
     window.addEventListener("message", handler);
@@ -97,48 +74,9 @@ export function storeIdentity(user: string, identity: AuthIdentity) {
     {
       target: IFRAME_TARGET,
       id,
-      action: "store",
+      action,
       user,
       identity,
-    },
-    _src
-  );
-
-  return promise;
-}
-
-export function clearIdentity(user: string) {
-  const iframe = getIframe();
-
-  _counter++;
-
-  const id = _counter;
-
-  const promise = new Promise<void>((resolve, reject) => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.target !== IFRAME_TARGET || event.data?.id !== id) {
-        return;
-      }
-
-      window.removeEventListener("message", handler);
-
-      if (event.data?.error) {
-        reject(new Error(event.data.error));
-        return;
-      }
-
-      resolve();
-    };
-
-    window.addEventListener("message", handler);
-  });
-
-  iframe.postMessage(
-    {
-      target: IFRAME_TARGET,
-      id,
-      action: "clear",
-      user,
     },
     _src
   );

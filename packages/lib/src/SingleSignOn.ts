@@ -1,5 +1,7 @@
 import { AuthIdentity } from "@dcl/crypto";
 
+type Action = "get" | "store" | "clear" | "ping";
+
 const IFRAME_ID = "single-sign-on";
 const IFRAME_TARGET = IFRAME_ID;
 
@@ -22,49 +24,65 @@ export function init(src: string) {
   document.body.appendChild(iframe);
 }
 
-export function getIdentity(user: string): Promise<AuthIdentity | null> {
-  return performAction("get", user);
+export async function getIdentity(user: string): Promise<AuthIdentity | null> {
+  const iframe = await getIframe();
+
+  const { identity } = await postMessage<{ identity: string | null }>(iframe, "get", { user });
+
+  if (!identity) {
+    return null;
+  }
+
+  const identityParsed = JSON.parse(identity) as AuthIdentity;
+
+  identityParsed.expiration = new Date(identityParsed.expiration);
+
+  return identityParsed;
 }
 
-export function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
-  return performAction("store", user, identity);
+export async function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
+  const iframe = await getIframe();
+
+  await postMessage(iframe, "store", { user, identity });
 }
 
-export function clearIdentity(user: string): Promise<void> {
-  return performAction("clear", user);
+export async function clearIdentity(user: string): Promise<void> {
+  const iframe = await getIframe();
+
+  await postMessage(iframe, "clear", { user });
 }
 
-function performAction(action: string, user: string, identity?: AuthIdentity) {
-  const iframe = getIframe();
+async function getIframe() {
+  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null;
 
+  const cw = iframe?.contentWindow;
+
+  if (!cw) {
+    throw new Error("Iframe is not available");
+  }
+
+  return cw;
+}
+
+function postMessage<T>(iframe: Window, action: Action, payload: { user?: string; identity?: AuthIdentity }) {
   _counter++;
 
   const id = _counter;
 
-  const promise = new Promise<any>((resolve, reject) => {
-    const handler = (event: MessageEvent) => {
-      if (event.data?.target !== IFRAME_TARGET || event.data?.id !== id) {
+  const promise = new Promise<T>((resolve, reject) => {
+    const handler = ({ data }: MessageEvent) => {
+      if (data?.target !== IFRAME_TARGET || data?.id !== id) {
         return;
       }
 
       window.removeEventListener("message", handler);
 
-      if (event.data?.error) {
-        reject(new Error(event.data.error));
+      if (data.error) {
+        reject(new Error(data.error));
         return;
       }
 
-      const msgIdentity = event.data?.identity;
-
-      if (msgIdentity) {
-        const msgIdentityParsed = JSON.parse(msgIdentity) as AuthIdentity;
-
-        msgIdentityParsed.expiration = new Date(msgIdentityParsed.expiration);
-
-        resolve(msgIdentityParsed);
-      } else {
-        resolve(null);
-      }
+      resolve(data);
     };
 
     window.addEventListener("message", handler);
@@ -75,23 +93,10 @@ function performAction(action: string, user: string, identity?: AuthIdentity) {
       target: IFRAME_TARGET,
       id,
       action,
-      user,
-      identity,
+      ...payload,
     },
     _src
   );
 
   return promise;
-}
-
-function getIframe() {
-  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null;
-
-  const cw = iframe?.contentWindow;
-
-  if (!cw) {
-    throw new Error("Iframe is not available");
-  }
-
-  return cw;
 }

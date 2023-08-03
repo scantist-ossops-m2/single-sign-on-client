@@ -4,6 +4,7 @@ type Action = "get" | "store" | "clear" | "ping";
 
 const IFRAME_ID = "single-sign-on";
 const IFRAME_TARGET = IFRAME_ID;
+const GET_IFRAME_TIMEOUT = 500;
 
 let _counter = 0;
 let _src = "";
@@ -53,36 +54,53 @@ export async function clearIdentity(user: string): Promise<void> {
 }
 
 async function getIframe() {
-  const iframe = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null;
+  const retries = 5;
 
-  const cw = iframe?.contentWindow;
+  for (let i = 0; i < retries; i++) {
+    const element = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null;
 
-  if (!cw) {
-    throw new Error("Iframe is not available");
+    const contentWindow = element?.contentWindow;
+
+    if (!contentWindow) {
+      await wait(GET_IFRAME_TIMEOUT);
+      continue;
+    }
+
+    try {
+      await postMessage(contentWindow, "ping", {}, GET_IFRAME_TIMEOUT);
+    } catch (e) {
+      continue;
+    }
+
+    return contentWindow;
   }
 
-  return cw;
+  throw new Error("Could not get iframe because it is not ready or cannot be communicated with");
 }
 
-function postMessage<T>(iframe: Window, action: Action, payload: { user?: string; identity?: AuthIdentity }) {
+async function postMessage<T>(
+  iframe: Window,
+  action: Action,
+  payload: { user?: string; identity?: AuthIdentity },
+  timeout = 0
+): Promise<T> {
   _counter++;
 
   const id = _counter;
 
-  const promise = new Promise<T>((resolve, reject) => {
-    const handler = ({ data }: MessageEvent) => {
+  let handler: ((event: MessageEvent) => void) | null = null;
+
+  const request = new Promise<T>((resolve, reject) => {
+    handler = ({ data }: MessageEvent) => {
       if (data?.target !== IFRAME_TARGET || data?.id !== id) {
         return;
       }
 
-      window.removeEventListener("message", handler);
-
       if (data.error) {
         reject(new Error(data.error));
-        return;
+      } else {
+        resolve(data);
       }
-
-      resolve(data);
     };
 
     window.addEventListener("message", handler);
@@ -98,5 +116,24 @@ function postMessage<T>(iframe: Window, action: Action, payload: { user?: string
     _src
   );
 
-  return promise;
+  try {
+    return await (timeout
+      ? Promise.race([
+          request,
+          new Promise<T>((_, reject) =>
+            setTimeout(() => reject(new Error("Did not receive a response in time")), timeout)
+          ),
+        ])
+      : request);
+  } catch (error) {
+    throw error;
+  } finally {
+    if (handler) {
+      window.removeEventListener("message", handler);
+    }
+  }
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

@@ -1,10 +1,9 @@
 import { AuthIdentity } from "@dcl/crypto";
+import { Action, ClientMessage, ServerMessage, SINGLE_SIGN_ON_TARGET, createMessage } from "./SingleSignOn.shared";
 
-type Action = "get" | "store" | "clear" | "ping";
-
-const IFRAME_ID = "single-sign-on";
-const IFRAME_TARGET = IFRAME_ID;
+const IFRAME_ID = SINGLE_SIGN_ON_TARGET;
 const GET_IFRAME_TIMEOUT = 500;
+const GET_IFRAME_RETRIES = 5;
 
 let _counter = 0;
 let _src = "";
@@ -27,36 +26,22 @@ export function init(src: string) {
 
 export async function getIdentity(user: string): Promise<AuthIdentity | null> {
   const iframe = await getIframe();
-
-  const { identity } = await postMessage<{ identity: string | null }>(iframe, "get", { user });
-
-  if (!identity) {
-    return null;
-  }
-
-  const identityParsed = JSON.parse(identity) as AuthIdentity;
-
-  identityParsed.expiration = new Date(identityParsed.expiration);
-
-  return identityParsed;
+  const { identity } = await postMessage(iframe, Action.GET, { user });
+  return identity ?? null;
 }
 
 export async function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
   const iframe = await getIframe();
-
-  await postMessage(iframe, "store", { user, identity });
+  await postMessage(iframe, Action.STORE, { user, identity });
 }
 
 export async function clearIdentity(user: string): Promise<void> {
   const iframe = await getIframe();
-
-  await postMessage(iframe, "clear", { user });
+  await postMessage(iframe, Action.CLEAR, { user });
 }
 
 async function getIframe() {
-  const retries = 5;
-
-  for (let i = 0; i < retries; i++) {
+  for (let i = 0; i < GET_IFRAME_RETRIES; i++) {
     const element = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null;
 
     const contentWindow = element?.contentWindow;
@@ -67,7 +52,7 @@ async function getIframe() {
     }
 
     try {
-      await postMessage(contentWindow, "ping", {}, GET_IFRAME_TIMEOUT);
+      await postMessage(contentWindow, Action.PING, {}, GET_IFRAME_TIMEOUT);
     } catch (e) {
       continue;
     }
@@ -78,21 +63,21 @@ async function getIframe() {
   throw new Error("Could not get iframe because it is not ready or cannot be communicated with");
 }
 
-async function postMessage<T>(
+async function postMessage(
   iframe: Window,
   action: Action,
-  payload: { user?: string; identity?: AuthIdentity },
+  payload: Pick<ClientMessage, "user" | "identity">,
   timeout = 0
-): Promise<T> {
+) {
   _counter++;
 
   const id = _counter;
 
   let handler: ((event: MessageEvent) => void) | null = null;
 
-  const request = new Promise<T>((resolve, reject) => {
-    handler = ({ data }: MessageEvent) => {
-      if (data?.target !== IFRAME_TARGET || data?.id !== id) {
+  const request = new Promise<ServerMessage>((resolve, reject) => {
+    handler = ({ data }: MessageEvent<ServerMessage>) => {
+      if (!data || data.target !== SINGLE_SIGN_ON_TARGET || data.id !== id) {
         return;
       }
 
@@ -106,21 +91,13 @@ async function postMessage<T>(
     window.addEventListener("message", handler);
   });
 
-  iframe.postMessage(
-    {
-      target: IFRAME_TARGET,
-      id,
-      action,
-      ...payload,
-    },
-    _src
-  );
+  iframe.postMessage(createMessage({ id, action, ...payload }), _src);
 
   try {
     return await (timeout
       ? Promise.race([
           request,
-          new Promise<T>((_, reject) =>
+          new Promise<ServerMessage>((_, reject) =>
             setTimeout(() => reject(new Error("Did not receive a response in time")), timeout)
           ),
         ])

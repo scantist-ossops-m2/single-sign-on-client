@@ -147,5 +147,5 @@ function wait(ms: number) {
 }
 
 function logFallback(error: Error) {
-  console.warn("Could not get identity from iframe, falling back to localStorage", error.message);
+  console.warn("Could not get identity from iframe, falling back to localStorage. Error:", error.message);
 }

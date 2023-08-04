@@ -1,5 +1,14 @@
 import { AuthIdentity } from "@dcl/crypto";
-import { Action, ClientMessage, ServerMessage, SINGLE_SIGN_ON_TARGET, createMessage } from "./SingleSignOn.shared";
+import {
+  Action,
+  ClientMessage,
+  ServerMessage,
+  SINGLE_SIGN_ON_TARGET,
+  createMessage,
+  localStorageGetIdentity,
+  localStorageStoreIdentity,
+  localStorageClearIdentity,
+} from "./SingleSignOn.shared";
 
 const IFRAME_ID = SINGLE_SIGN_ON_TARGET;
 const GET_IFRAME_TIMEOUT = 500;
@@ -26,18 +35,40 @@ export function init(src: string) {
 
 export async function getIdentity(user: string): Promise<AuthIdentity | null> {
   const iframe = await getIframe();
-  const { identity } = await postMessage(iframe, Action.GET, { user });
-  return identity ?? null;
+
+  let identity: AuthIdentity | null;
+
+  try {
+    const message = await postMessage(iframe, Action.GET, { user });
+    identity = message.identity ?? null;
+  } catch (e) {
+    logFallback(e as Error);
+    identity = localStorageGetIdentity(user);
+  }
+
+  return identity;
 }
 
 export async function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
   const iframe = await getIframe();
-  await postMessage(iframe, Action.STORE, { user, identity });
+
+  try {
+    await postMessage(iframe, Action.STORE, { user, identity });
+  } catch (e) {
+    logFallback(e as Error);
+    localStorageStoreIdentity(user, identity);
+  }
 }
 
 export async function clearIdentity(user: string): Promise<void> {
   const iframe = await getIframe();
-  await postMessage(iframe, Action.CLEAR, { user });
+
+  try {
+    await postMessage(iframe, Action.CLEAR, { user });
+  } catch (e) {
+    logFallback(e as Error);
+    localStorageClearIdentity(user);
+  }
 }
 
 async function getIframe() {
@@ -113,4 +144,8 @@ async function postMessage(
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function logFallback(error: Error) {
+  console.warn("Could not get identity from iframe, falling back to localStorage", error.message);
 }

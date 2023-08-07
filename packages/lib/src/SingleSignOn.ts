@@ -10,13 +10,26 @@ import {
   localStorageClearIdentity,
 } from "./SingleSignOn.shared";
 
+// The id used to identify the iframe.
 const IFRAME_ID = SINGLE_SIGN_ON_TARGET;
+
+// The timeout in milliseconds to wait for the response of the iframe.
+// This is used to avoid waiting indefinitely for a response.
 const GET_IFRAME_TIMEOUT = 500;
+
+// The number of times to retry getting the iframe.
+// After this number of retries, an error is thrown.
 const GET_IFRAME_RETRIES = 5;
 
+// Used as the id to identify messages.
+// It is incremented every time a message is sent.
 let _counter = 0;
+
+// The url of the iframe.
+// Being an empty string or not indicates if the iframe has been initialized with the `init` function.
 let _src = "";
 
+// Initializes the client by appending the SSO iframe to the document.
 export function init(src: string) {
   if (_src) {
     throw new Error("Already initialized");
@@ -33,6 +46,8 @@ export function init(src: string) {
   _src = src;
 }
 
+// Gets the identity of the given user from the iframe.
+// Fallbacks to the current application's local storage if communication with the iframe fails.
 export async function getIdentity(user: string): Promise<AuthIdentity | null> {
   let identity: AuthIdentity | null;
 
@@ -47,6 +62,8 @@ export async function getIdentity(user: string): Promise<AuthIdentity | null> {
   return identity;
 }
 
+// Stores the identity of the given user into the iframe.
+// Fallbacks to the current application's local storage if communication with the iframe fails.
 export async function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
   try {
     await postMessage(await getIframe(), Action.STORE, { user, identity });
@@ -56,6 +73,8 @@ export async function storeIdentity(user: string, identity: AuthIdentity): Promi
   }
 }
 
+// Clears the identity of the given user from the iframe.
+// Fallbacks to the current application's local storage if communication with the iframe fails.
 export async function clearIdentity(user: string): Promise<void> {
   try {
     await postMessage(await getIframe(), Action.CLEAR, { user });
@@ -65,6 +84,9 @@ export async function clearIdentity(user: string): Promise<void> {
   }
 }
 
+// Gets the iframe content window used to communicate with the iframe through postMessage.
+// Has a retry mechanism to wait for the iframe to be ready.
+// This has been implemented because some time might pass between the iframe being created and the iframe being ready to communicate.
 async function getIframe() {
   if (!_src) {
     throw new Error("Not initialized");
@@ -92,6 +114,8 @@ async function getIframe() {
   throw new Error("Could not get iframe because it is not ready or cannot be communicated with");
 }
 
+// Simulates a request-response communication with the iframe.
+// Sends a message to the iframe with a distinguishable id and waits for the response with the same id.
 async function postMessage(
   iframe: Window,
   action: Action,
@@ -140,10 +164,12 @@ async function postMessage(
   }
 }
 
+// Helper function to wait for a given amount of time in milliseconds.
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Helper function to log a warning when the iframe cannot be communicated with.
 function logFallback(error: Error) {
   console.warn("Could not get identity from iframe, falling back to localStorage. Error:", error.message);
 }

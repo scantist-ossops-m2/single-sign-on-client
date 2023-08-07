@@ -18,11 +18,9 @@ let _counter = 0;
 let _src = "";
 
 export function init(src: string) {
-  if (document.getElementById(IFRAME_ID)) {
-    throw new Error("SingleSignOn already initialized");
+  if (_src) {
+    throw new Error("Already initialized");
   }
-
-  _src = src;
 
   const iframe = document.createElement("iframe");
   iframe.id = IFRAME_ID;
@@ -31,15 +29,15 @@ export function init(src: string) {
   iframe.height = iframe.width;
 
   document.body.appendChild(iframe);
+
+  _src = src;
 }
 
 export async function getIdentity(user: string): Promise<AuthIdentity | null> {
-  const iframe = await getIframe();
-
   let identity: AuthIdentity | null;
 
   try {
-    const message = await postMessage(iframe, Action.GET, { user });
+    const message = await postMessage(await getIframe(), Action.GET, { user });
     identity = message.identity ?? null;
   } catch (e) {
     logFallback(e as Error);
@@ -50,10 +48,8 @@ export async function getIdentity(user: string): Promise<AuthIdentity | null> {
 }
 
 export async function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
-  const iframe = await getIframe();
-
   try {
-    await postMessage(iframe, Action.STORE, { user, identity });
+    await postMessage(await getIframe(), Action.STORE, { user, identity });
   } catch (e) {
     logFallback(e as Error);
     localStorageStoreIdentity(user, identity);
@@ -61,10 +57,8 @@ export async function storeIdentity(user: string, identity: AuthIdentity): Promi
 }
 
 export async function clearIdentity(user: string): Promise<void> {
-  const iframe = await getIframe();
-
   try {
-    await postMessage(iframe, Action.CLEAR, { user });
+    await postMessage(await getIframe(), Action.CLEAR, { user });
   } catch (e) {
     logFallback(e as Error);
     localStorageClearIdentity(user);
@@ -72,6 +66,10 @@ export async function clearIdentity(user: string): Promise<void> {
 }
 
 async function getIframe() {
+  if (!_src) {
+    throw new Error("Not initialized");
+  }
+
   for (let i = 0; i < GET_IFRAME_RETRIES; i++) {
     const element = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null;
 

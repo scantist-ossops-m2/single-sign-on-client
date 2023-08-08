@@ -38,8 +38,10 @@ export function init(src: string) {
   const iframe = document.createElement("iframe");
   iframe.id = IFRAME_ID;
   iframe.src = src;
-  iframe.width = "0";
-  iframe.height = iframe.width;
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "none";
+  iframe.style.position = "absolute";
 
   document.body.appendChild(iframe);
 

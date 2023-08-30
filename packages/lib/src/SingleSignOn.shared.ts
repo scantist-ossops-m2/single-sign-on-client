@@ -44,20 +44,38 @@ export function createMessage(message: Omit<ClientMessage & ServerMessage, "targ
 // Does some extra operations on the obtained value to make it more reliable.
 export function localStorageGetIdentity(user: string) {
   const item = localStorage.getItem(getKey(user));
-
-  const identity = item ? (JSON.parse(item) as AuthIdentity) : null;
-
-  if (identity) {
-    // The expiration is parsed as a string, so we need to convert it to a Date.
-    identity.expiration = new Date(identity.expiration);
+  if (!item) {
+    return null;
   }
 
+  let identity: AuthIdentity;
+  try {
+    // If the item is not a valid JSON, we remove it.
+    identity = JSON.parse(item);
+  } catch (e) {
+    localStorageClearIdentity(user);
+    return null;
+  }
+
+  // The expiration is parsed as a string, so we need to convert it to a Date.
+  identity.expiration = new Date(identity.expiration);
+
+  // If expiration is in the past, we remove the identity.
+  if (identity.expiration.getTime() <= Date.now()) {
+    localStorageClearIdentity(user);
+    return null
+  }
+
+  // Everything is fine, we return the identity.
   return identity;
 }
 
-// Stores the identity of the user in local storage.
+// Stores the identity of the user in local storage (if is not expired).
 export function localStorageStoreIdentity(user: string, identity: AuthIdentity) {
-  localStorage.setItem(getKey(user), JSON.stringify(identity));
+  const expiration = new Date(identity.expiration)
+  if (expiration.getTime() > Date.now()) {
+    localStorage.setItem(getKey(user), JSON.stringify(identity));
+  }
 }
 
 // Clears the identity of the user from local storage.

@@ -1,93 +1,187 @@
+import Ajv, { JSONSchemaType } from "ajv";
+import addFormats from "ajv-formats";
 import type { AuthIdentity } from "@dcl/crypto";
+import { AuthChain, ProviderType } from "@dcl/schemas";
 
-// The possible typo of interactions with the iframe.
-export enum Action {
-  // Get the identity of a user.
-  GET = "get",
-  // Store the identity of a user.
-  STORE = "store",
-  // Clear the identity of a user.
-  CLEAR = "clear",
-  // Check that the iframe can be communicated with.
-  PING = "ping",
-}
-
-// Value used to identify messages intended for the iframe.
 export const SINGLE_SIGN_ON_TARGET = "single-sign-on";
 
-// The schema of messages sent by the client.
+export enum Action {
+  GET_IDENTITY = "get-identity",
+  SET_IDENTITY = "set-identity",
+  GET_CONNECTION_DATA = "get-connection-data",
+  SET_CONNECTION_DATA = "set-connection-data",
+  INIT = "init",
+}
+
+export type ConnectionData = {
+  address: string;
+  provider: ProviderType;
+};
+
+export type IdentityPayload = {
+  address: string;
+  identity: AuthIdentity | null;
+};
+
 export type ClientMessage = {
-  target: string;
+  target: typeof SINGLE_SIGN_ON_TARGET;
   id: number;
-  action?: Action;
-  user?: string;
-  identity?: AuthIdentity | null;
+  action: Action;
+  payload?: ConnectionData | IdentityPayload | string | null;
 };
 
-// The schema of messages sent by the iframe.
 export type ServerMessage = {
-  target: string;
+  target: typeof SINGLE_SIGN_ON_TARGET;
   id: number;
-  identity?: AuthIdentity | null;
-  error?: string;
+  action: Action;
+  ok: boolean;
+  payload?: ConnectionData | AuthIdentity | string | null;
 };
 
-// Helper function to create a message without the need of providing a target.
-export function createMessage(message: Omit<ClientMessage & ServerMessage, "target">) {
-  return {
-    target: SINGLE_SIGN_ON_TARGET,
-    ...message,
+export namespace LocalStorageUtils {
+  export const IDENTITY_KEY = "single-sign-on-v2-identity";
+  export const CONNECTION_DATA_KEY = "single-sign-on-v2-connection-data";
+
+  export function getIdentity(address: string): AuthIdentity | null {
+    Validations.validateAddress(address);
+
+    const identityStr = localStorage.getItem(getIdentityKey(address));
+
+    if (!identityStr) {
+      return null;
+    }
+
+    const identityWithStringExpiration: Omit<AuthIdentity, "expiration"> & { expiration: string } =
+      JSON.parse(identityStr);
+
+    Validations.validateAuthIdentity(identityWithStringExpiration);
+
+    const identity: AuthIdentity = {
+      ...identityWithStringExpiration,
+      expiration: new Date(identityWithStringExpiration.expiration),
+    };
+
+    identity.expiration = new Date(identity.expiration);
+
+    if (identity.expiration.getTime() <= Date.now()) {
+      return null;
+    }
+
+    return identity;
+  }
+
+  export function setIdentity(address: string, identity: AuthIdentity | null): void {
+    Validations.validateAddress(address);
+
+    const key = getIdentityKey(address);
+
+    if (!identity) {
+      localStorage.removeItem(key);
+    } else {
+      Validations.validateAuthIdentity(JSON.parse(JSON.stringify(identity)));
+
+      localStorage.setItem(key, JSON.stringify(identity));
+    }
+  }
+
+  export function getConnectionData(): ConnectionData | null {
+    const connectionDataStr = localStorage.getItem(CONNECTION_DATA_KEY);
+
+    if (!connectionDataStr) {
+      return null;
+    }
+
+    const connectionData = JSON.parse(connectionDataStr) as ConnectionData;
+
+    Validations.validateConnectionData(connectionData);
+
+    return connectionData as ConnectionData;
+  }
+
+  export function setConnectionData(connectionData: ConnectionData | null): void {
+    if (!connectionData) {
+      localStorage.removeItem(CONNECTION_DATA_KEY);
+    } else {
+      Validations.validateConnectionData(connectionData);
+
+      localStorage.setItem(CONNECTION_DATA_KEY, JSON.stringify(connectionData));
+    }
+  }
+
+  function getIdentityKey(address: string) {
+    return `${IDENTITY_KEY}-${address}`;
+  }
+}
+
+namespace Validations {
+  export type AuthIdentityWithStringExpiration = Omit<AuthIdentity, "expiration"> & { expiration: string };
+
+  const ajv = new Ajv();
+  addFormats(ajv);
+
+  const addressSchema: JSONSchemaType<string> = {
+    type: "string",
+    pattern: "^0x[a-fA-F0-9]{40}$",
   };
-}
 
-// Get the identity of the user from local storage.
-// Does some extra operations on the obtained value to make it more reliable.
-export function localStorageGetIdentity(user: string) {
-  const item = localStorage.getItem(getKey(user));
-  if (!item) {
-    return null;
+  const connectionDataSchema: JSONSchemaType<ConnectionData> = {
+    type: "object",
+    properties: {
+      provider: ProviderType.schema,
+      address: addressSchema,
+    },
+    required: ["address", "provider"],
+    additionalProperties: false,
+  };
+
+  const authIdentitySchema: JSONSchemaType<AuthIdentityWithStringExpiration> = {
+    type: "object",
+    properties: {
+      authChain: AuthChain.schema,
+      expiration: {
+        type: "string",
+        format: "date-time",
+      },
+      ephemeralIdentity: {
+        type: "object",
+        properties: {
+          address: {
+            type: "string",
+          },
+          privateKey: {
+            type: "string",
+          },
+          publicKey: {
+            type: "string",
+          },
+        },
+        required: ["address", "privateKey", "publicKey"],
+        additionalProperties: false,
+      },
+    },
+    required: ["ephemeralIdentity", "authChain", "expiration"],
+    additionalProperties: false,
+  };
+
+  const _validateConnectionData = ajv.compile(connectionDataSchema);
+  const _validateAuthIdentity = ajv.compile(authIdentitySchema);
+  const _validateAddress = ajv.compile(addressSchema);
+
+  export function validateConnectionData(connectionData: any) {
+    if (!_validateConnectionData(connectionData)) {
+      throw new Error(`Invalid connection data: ${JSON.stringify(_validateConnectionData.errors)}`);
+    }
   }
 
-  let identity: AuthIdentity;
-  try {
-    // If the item is not a valid JSON, we remove it.
-    identity = JSON.parse(item);
-  } catch (e) {
-    localStorageClearIdentity(user);
-    return null;
+  export function validateAuthIdentity(authIdentity: any) {
+    if (!_validateAuthIdentity(authIdentity)) {
+      throw new Error(`Invalid auth identity: ${JSON.stringify(_validateAuthIdentity.errors)}`);
+    }
   }
 
-  // The expiration is parsed as a string, so we need to convert it to a Date.
-  identity.expiration = new Date(identity.expiration);
-
-  // If expiration is in the past, we remove the identity.
-  if (identity.expiration.getTime() <= Date.now()) {
-    localStorageClearIdentity(user);
-    return null
+  export function validateAddress(address: any) {
+    if (!_validateAddress(address)) {
+      throw new Error(`Invalid address: ${JSON.stringify(_validateAddress.errors)}`);
+    }
   }
-
-  // Everything is fine, we return the identity.
-  return identity;
-}
-
-// Stores the identity of the user in local storage (if is not expired).
-export function localStorageStoreIdentity(user: string, identity: AuthIdentity) {
-  const expiration = new Date(identity.expiration)
-  if (expiration.getTime() > Date.now()) {
-    localStorage.setItem(getKey(user), JSON.stringify(identity));
-  }
-}
-
-// Clears the identity of the user from local storage.
-export function localStorageClearIdentity(user: string) {
-  localStorage.removeItem(getKey(user));
-}
-
-// Gets the key where the identity of the user is stored in local storage.
-function getKey(user: string) {
-  if (!/^0x[a-fA-F0-9]{40}$/.test(user)) {
-    throw new Error(`User must be a valid ethereum address`);
-  }
-
-  return `single-sign-on-${user.toLowerCase()}`;
 }

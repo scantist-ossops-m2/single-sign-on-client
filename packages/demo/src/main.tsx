@@ -1,13 +1,31 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import * as SingleSignOn from "@dcl/single-sign-on-client";
+import { SingleSignOn } from "@dcl/single-sign-on-client";
 import App from "./App.tsx";
 
-// SingleSignOn.init("https://id.decentraland.org");
-SingleSignOn.init("http://localhost:3001");
+async function main() {
+  // Init Locally
+  // await SSO.init();
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+  // Init Localhost
+  await SingleSignOn.getInstance().init({
+    src: "http://localhost:3001",
+    isUrlOptions: {
+      protocols: ["http"],
+      require_tld: false,
+    },
+  });
+
+  // Init Production
+  // await SSO.init({
+  //   src: "https://id.decentraland.org",
+  // });
+
+  ReactDOM.createRoot(document.getElementById("root")!).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+}
+
+main();

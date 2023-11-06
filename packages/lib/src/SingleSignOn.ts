@@ -1,187 +1,213 @@
-import type { AuthIdentity } from "@dcl/crypto";
 import isURL, { IsURLOptions } from "validator/lib/isURL";
+import { AuthIdentity } from "@dcl/crypto";
 import {
   Action,
   ClientMessage,
+  ConnectionData,
+  IdentityPayload,
+  LocalStorageUtils,
   ServerMessage,
   SINGLE_SIGN_ON_TARGET,
-  createMessage,
-  localStorageGetIdentity,
-  localStorageStoreIdentity,
-  localStorageClearIdentity,
 } from "./SingleSignOn.shared";
 
-// The id used to identify the iframe.
 const IFRAME_ID = SINGLE_SIGN_ON_TARGET;
 
-// The timeout in milliseconds to wait for the response of the iframe.
-// This is used to avoid waiting indefinitely for a response.
-const GET_IFRAME_TIMEOUT = 500;
+type InitArgs = {
+  src?: string;
+  isUrlOptions?: IsURLOptions;
+  timeout?: number;
+};
 
-// The number of times to retry getting the iframe.
-// After this number of retries, an error is thrown.
-const GET_IFRAME_RETRIES = 5;
-
-// Used as the id to identify messages.
-// It is incremented every time a message is sent.
-let _counter = 0;
-
-// The url of the iframe.
-// Being an empty string or not indicates if the iframe has been initialized with the `init` function.
-let _src = "";
-
-const defaultOptions: IsURLOptions = {
-  protocols: ["https"],
-  require_protocol: true,
+enum InitState {
+  NOT_INITIALIZED,
+  INITIALIZING,
+  INITIALIZED,
 }
 
-// Initializes the client by appending the SSO iframe to the document.
-export function init(src: string, options: IsURLOptions = {}) {
-  if (!isURL(src, { ...defaultOptions, ...options })) {
-    throw new Error(`Invalid url: ${src}`);
-  }
+export class SingleSignOn {
+  private static instance: SingleSignOn | null = null;
 
-  if (_src) {
-    throw new Error("Already initialized");
-  }
-
-  const iframe = document.createElement("iframe");
-  iframe.id = IFRAME_ID;
-  iframe.src = src;
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.border = "none";
-  iframe.style.position = "absolute";
-
-  document.body.appendChild(iframe);
-
-  _src = src;
-}
-
-// Gets the identity of the given user from the iframe.
-// Fallbacks to the current application's local storage if communication with the iframe fails.
-export async function getIdentity(user: string): Promise<AuthIdentity | null> {
-  let identity: AuthIdentity | null;
-
-  try {
-    const message = await postMessage(await getIframe(), Action.GET, { user });
-    identity = message.identity ?? null;
-  } catch (e) {
-    logFallback(e as Error);
-    identity = localStorageGetIdentity(user);
-  }
-
-  return identity;
-}
-
-// Stores the identity of the given user into the iframe.
-// Fallbacks to the current application's local storage if communication with the iframe fails.
-export async function storeIdentity(user: string, identity: AuthIdentity): Promise<void> {
-  try {
-    await postMessage(await getIframe(), Action.STORE, { user, identity });
-  } catch (e) {
-    logFallback(e as Error);
-    localStorageStoreIdentity(user, identity);
-  }
-}
-
-// Clears the identity of the given user from the iframe.
-// Fallbacks to the current application's local storage if communication with the iframe fails.
-export async function clearIdentity(user: string): Promise<void> {
-  try {
-    await postMessage(await getIframe(), Action.CLEAR, { user });
-  } catch (e) {
-    logFallback(e as Error);
-    localStorageClearIdentity(user);
-  }
-}
-
-// Gets the iframe content window used to communicate with the iframe through postMessage.
-// Has a retry mechanism to wait for the iframe to be ready.
-// This has been implemented because some time might pass between the iframe being created and the iframe being ready to communicate.
-async function getIframe() {
-  if (!_src) {
-    throw new Error("Not initialized");
-  }
-
-  for (let i = 0; i < GET_IFRAME_RETRIES; i++) {
-    const element = document.getElementById(IFRAME_ID) as HTMLIFrameElement | null;
-
-    const contentWindow = element?.contentWindow;
-
-    if (!contentWindow) {
-      await wait(GET_IFRAME_TIMEOUT);
-      continue;
+  static getInstance(): SingleSignOn {
+    if (!this.instance) {
+      this.instance = new SingleSignOn();
     }
+
+    return this.instance;
+  }
+
+  private initState = InitState.NOT_INITIALIZED;
+  private isLocal = false;
+  private src: string | null = null;
+  private idCounter = 1;
+
+  /**
+   * Initializes the SSO client.
+   * - Should only be called once.
+   * - If not being used locally, creates an iframe of the identity webapp.
+   * - The iframe should not be created by any other means rather than the init function.
+   *
+   * If SSO is initialized locally, instead of communicating with the iframe it will work with the implementing app's local storage.
+   * This is to prevent the application from blocking the user in case the iframe webapp cannot be loaded.
+   * @param args.src The url of the identity webapp.
+   * @param args.isUrlOptions Options for the url validation. By default it has to be an https url.
+   * @param args.timeout The timeout for the initialization. By default it is 2 seconds.
+   */
+  async init({ src: _src, isUrlOptions, timeout }: InitArgs = {}): Promise<void> {
+    if (this.initState !== InitState.NOT_INITIALIZED) {
+      console.log("SSO cannot be initialized more than once");
+
+      return;
+    }
+
+    this.initState = InitState.INITIALIZING;
 
     try {
-      await postMessage(contentWindow, Action.PING, {}, GET_IFRAME_TIMEOUT);
+      if (!_src) {
+        throw new Error("Using local by configuration");
+      }
+
+      if (!isURL(_src, { protocols: ["https"], require_valid_protocol: true, ...(isUrlOptions ?? {}) })) {
+        throw new Error(`Invalid url: ${_src}`);
+      }
+
+      if (document.getElementById(IFRAME_ID)) {
+        throw new Error("SSO Element was not created by this client");
+      }
+
+      const iframe = document.createElement("iframe");
+      iframe.id = IFRAME_ID;
+      iframe.src = _src;
+      iframe.style.width = "0";
+      iframe.style.height = "0";
+      iframe.style.border = "none";
+      iframe.style.position = "absolute";
+
+      document.body.appendChild(iframe);
+
+      await Promise.race([
+        this.waitForInitMessage(),
+        new Promise((_resolve, reject) =>
+          setTimeout(() => reject(new Error("Initialization timeout")), timeout ?? 2000)
+        ),
+      ]);
+
+      console.log("SSO initialized");
     } catch (e) {
-      continue;
+      this.isLocal = true;
+
+      console.log("SSO initialized locally, reason: " + (e as Error).message);
     }
 
-    return contentWindow;
+    this.initState = InitState.INITIALIZED;
+    this.src = _src ?? null;
   }
 
-  throw new Error("Could not get iframe because it is not ready or cannot be communicated with");
-}
+  async setConnectionData(data: ConnectionData | null): Promise<void> {
+    await this.handle(Action.SET_CONNECTION_DATA, data);
+  }
 
-// Simulates a request-response communication with the iframe.
-// Sends a message to the iframe with a distinguishable id and waits for the response with the same id.
-async function postMessage(
-  iframe: Window,
-  action: Action,
-  payload: Pick<ClientMessage, "user" | "identity">,
-  timeout = 0
-) {
-  _counter++;
+  async getConnectionData(): Promise<ConnectionData | null> {
+    return (await this.handle(Action.GET_CONNECTION_DATA)) as ConnectionData | null;
+  }
 
-  const id = _counter;
+  async setIdentity(address: string, identity: AuthIdentity | null): Promise<void> {
+    await this.handle(Action.SET_IDENTITY, { address, identity });
+  }
 
-  let handler: ((event: MessageEvent) => void) | null = null;
+  async getIdentity(address: string): Promise<AuthIdentity | null> {
+    return (await this.handle(Action.GET_IDENTITY, address)) as AuthIdentity | null;
+  }
 
-  const request = new Promise<ServerMessage>((resolve, reject) => {
-    handler = ({ data }: MessageEvent<ServerMessage>) => {
-      if (!data || data.target !== SINGLE_SIGN_ON_TARGET || data.id !== id) {
-        return;
+  private async handle(action: Action, payload?: ClientMessage["payload"]) {
+    if (this.initState !== InitState.INITIALIZED) {
+      throw new Error("SSO is not initialized");
+    }
+
+    if (this.isLocal) {
+      switch (action) {
+        case Action.SET_CONNECTION_DATA:
+          return LocalStorageUtils.setConnectionData(payload as ConnectionData | null);
+        case Action.GET_CONNECTION_DATA:
+          return LocalStorageUtils.getConnectionData();
+        case Action.SET_IDENTITY:
+          const { address, identity } = payload as IdentityPayload;
+          return LocalStorageUtils.setIdentity(address, identity);
+        case Action.GET_IDENTITY:
+          return LocalStorageUtils.getIdentity(payload as string);
+        default:
+          throw new Error("Unsupported action");
       }
+    } else {
+      const iframeWindow = this.getIframeWindow();
+      const id = this.idCounter++;
 
-      if (data.error) {
-        reject(new Error(data.error));
-      } else {
-        resolve(data);
-      }
-    };
+      const promise = this.waitForActionResponse(id, action);
 
-    window.addEventListener("message", handler);
-  });
+      iframeWindow.postMessage({ target: SINGLE_SIGN_ON_TARGET, id, action, payload } as ClientMessage, this.src!);
 
-  iframe.postMessage(createMessage({ id, action, ...payload }), _src);
-
-  try {
-    return await (timeout
-      ? Promise.race([
-          request,
-          new Promise<ServerMessage>((_, reject) =>
-            setTimeout(() => reject(new Error("Did not receive a response in time")), timeout)
-          ),
-        ])
-      : request);
-  } catch (error) {
-    throw error;
-  } finally {
-    if (handler) {
-      window.removeEventListener("message", handler);
+      return promise;
     }
   }
-}
 
-// Helper function to wait for a given amount of time in milliseconds.
-function wait(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+  private getIframeWindow(): Window {
+    const element = document.getElementById(IFRAME_ID);
 
-// Helper function to log a warning when the iframe cannot be communicated with.
-function logFallback(error: Error) {
-  console.warn("Could not get identity from iframe, falling back to localStorage. Error:", error.message);
+    if (!element) {
+      throw new Error("Unable to obtain the SSO iframe element");
+    }
+
+    if (element.tagName !== "IFRAME") {
+      throw new Error("The SSO element is not an iframe");
+    }
+
+    const iframe = element as HTMLIFrameElement;
+
+    if (new URL(iframe.src).origin !== new URL(this.src!).origin) {
+      throw new Error("The SSO iframe src has been modified");
+    }
+
+    const iframeWindow = iframe.contentWindow;
+
+    if (!iframeWindow) {
+      throw new Error("Unable to obtain the SSO iframe window");
+    }
+
+    return iframeWindow;
+  }
+
+  private waitForInitMessage(): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      const handler = (event: MessageEvent<ServerMessage>) => {
+        if (event.data.target !== SINGLE_SIGN_ON_TARGET || event.data.action !== Action.INIT) {
+          return;
+        }
+
+        window.removeEventListener("message", handler);
+
+        if (!event.data.ok) {
+          reject(new Error(event.data.payload as string));
+        }
+
+        resolve();
+      };
+
+      window.addEventListener("message", handler);
+    });
+  }
+
+  private waitForActionResponse(id: number, action: Action) {
+    return new Promise<ServerMessage["payload"]>((resolve, reject) => {
+      const handler = ({ data }: MessageEvent<ServerMessage>) => {
+        if (data.target !== SINGLE_SIGN_ON_TARGET || data.id !== id || data.action !== action) {
+          return;
+        }
+
+        window.removeEventListener("message", handler);
+
+        !data.ok ? reject(data.payload as string) : resolve(data.payload);
+      };
+
+      window.addEventListener("message", handler);
+    });
+  }
 }

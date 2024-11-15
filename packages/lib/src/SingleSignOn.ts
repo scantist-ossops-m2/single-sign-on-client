@@ -1,4 +1,5 @@
-import { AuthIdentity } from "@dcl/crypto";
+import type { AuthIdentity } from "@dcl/crypto";
+import isURL, { IsURLOptions } from "validator/lib/isURL";
 import {
   Action,
   ClientMessage,
@@ -29,8 +30,17 @@ let _counter = 0;
 // Being an empty string or not indicates if the iframe has been initialized with the `init` function.
 let _src = "";
 
+const defaultOptions: IsURLOptions = {
+  protocols: ["https"],
+  require_protocol: true,
+}
+
 // Initializes the client by appending the SSO iframe to the document.
-export function init(src: string) {
+export function init(src: string, options: IsURLOptions = {}) {
+  if (!isURL(src, { ...defaultOptions, ...options })) {
+    throw new Error(`Invalid url: ${src}`);
+  }
+
   if (_src) {
     throw new Error("Already initialized");
   }

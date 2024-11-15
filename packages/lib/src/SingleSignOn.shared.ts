@@ -1,4 +1,4 @@
-import { AuthIdentity } from "@dcl/crypto";
+import type { AuthIdentity } from "@dcl/crypto";
 
 // The possible typo of interactions with the iframe.
 export enum Action {
